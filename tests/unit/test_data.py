@@ -371,3 +371,36 @@ def test_sorted_by_frame_matches_build_rs_ordering():
     py_order = sorted_by_frame(shuffled)
     rust_order = sorted(shuffled, key=_rust_frame_key)  # stable, like Rust sort_by_key
     assert py_order == rust_order
+
+
+def test_augment_pair_rotation_is_cached_per_angle():
+    """Each max_rotation_deg gets its own layer.
+
+    The layer used to be cached on the function object regardless of angle, so
+    an in-process sweep over augmentation regimes silently reused the first
+    regime's rotation for every later regime.
+    """
+    from src.data import augment_pair
+
+    img = tf.random.uniform((16, 16, 3))
+    mask = tf.cast(tf.random.uniform((16, 16, 1)) > 0.5, tf.float32)
+    kw = dict(flip_prob=0.0, brightness=0.0, contrast=0.0, saturation=0.0, hue=0.0)
+
+    augment_pair(img, mask, max_rotation_deg=20.0, **kw)
+    augment_pair(img, mask, max_rotation_deg=5.0, **kw)
+
+    cache = augment_pair._rotate_cache
+    assert {20.0, 5.0} <= set(cache)
+    assert cache[20.0] is not cache[5.0]
+    assert cache[20.0].factor != cache[5.0].factor
+
+
+def test_augment_pair_zero_rotation_is_identity():
+    """max_rotation_deg=0 skips the resample entirely."""
+    from src.data import augment_pair
+
+    img = tf.random.uniform((16, 16, 3))
+    mask = tf.cast(tf.random.uniform((16, 16, 1)) > 0.5, tf.float32)
+    out_img, _ = augment_pair(img, mask, flip_prob=0.0, max_rotation_deg=0.0,
+                              brightness=0.0, contrast=0.0, saturation=0.0, hue=0.0)
+    np.testing.assert_allclose(out_img.numpy(), img.numpy())

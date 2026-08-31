@@ -73,7 +73,8 @@ def main():
         print(f"Student model not found at {student_src}")
         sys.exit(1)
 
-    quant_res = export_int8(str(student_src), models_dir=models_dir_path)
+    quant_res = export_int8(str(student_src), models_dir=models_dir_path,
+                            config_path=config_path)
 
     if quant_res.get("quant_params_path"):
         print(f"\n  ⚠  Firmware dependency: {quant_res['quant_params_path']}")

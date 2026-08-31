@@ -120,20 +120,30 @@ def augment_pair(
       - max_rotation_deg: maximum rotation in degrees
       - brightness, contrast, saturation, hue: color jitter parameters
     """
-    # Cache the augmentation layers once on the function object. They hold no
+    # Cache the augmentation layers on the function object. They hold no
     # trainable weights (only RNG state), so sharing the same instances across
     # tf.data's parallel `map` calls is safe; the alternative — rebuilding layers
-    # per element — would be far slower. NOTE: max_rotation_deg is read only on
-    # first call, so changing it between calls in one process has no effect.
+    # per element — would be far slower. The rotation layer bakes in
+    # `max_rotation_deg`, so it is cached per angle: an in-process sweep over
+    # augmentation regimes (e.g. cv_search with --jobs <= 1) would otherwise
+    # silently reuse the first regime's rotation for every later regime.
     if not hasattr(augment_pair, "_flip"):
         augment_pair._flip = layers.RandomFlip("horizontal")
-        augment_pair._rotate = layers.RandomRotation(factor=max_rotation_deg/360.0, fill_mode="reflect")
-    
+        augment_pair._rotate_cache = {}
+    rotate = augment_pair._rotate_cache.get(max_rotation_deg)
+    if rotate is None and max_rotation_deg > 0:
+        rotate = layers.RandomRotation(factor=max_rotation_deg/360.0, fill_mode="reflect")
+        augment_pair._rotate_cache[max_rotation_deg] = rotate
+
     concat = tf.concat([img, mask], axis=-1)
     do_flip = tf.less(tf.random.uniform([]), flip_prob)
     concat = tf.cond(do_flip, lambda: augment_pair._flip(concat, training=True), lambda: concat)
-    concat = augment_pair._rotate(concat, training=True)
-    
+    # max_rotation_deg == 0 disables rotation outright (a factor-0 RandomRotation
+    # is a no-op but still costs a resample). Static Python float at trace time,
+    # so the guard folds away inside the tf.data map.
+    if rotate is not None:
+        concat = rotate(concat, training=True)
+
     img = concat[..., :3]
     mask = concat[..., 3:4]
     mask = tf.cast(mask > 0.5, tf.float32)

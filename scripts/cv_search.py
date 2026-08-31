@@ -31,7 +31,7 @@ import json
 import argparse
 import itertools
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 if __name__ == "__main__" and __package__ is None:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -103,7 +103,7 @@ def make_config_overrides(temperature: float, alpha: float, regime: str,
 
 def expand_grid(temperatures: List[float], alphas: List[float],
                 regimes: List[str], ce_options: List[bool],
-                tversky_specs: List[Tuple[float, float, float]] = ((0.0, 0.7, 0.3),)
+                tversky_specs: Sequence[Union[float, Tuple[float, float, float]]] = ((0.0, 0.7, 0.3),)
                 ) -> List[Dict[str, Any]]:
     """Cartesian product → config_overrides, de-duplicated.
 
@@ -113,11 +113,17 @@ def expand_grid(temperatures: List[float], alphas: List[float],
     triples and defaults to ``((0.0, 0.7, 0.3),)`` so callers that don't sweep the
     conservative loss get exactly the previous grid. Passing explicit triples (vs a
     full alpha×beta product) keeps the sweep on the intended simplex (e.g. α+β=1).
+    A bare weight is also accepted and expands to ``(w, 0.7, 0.3)``, so a caller
+    sweeping only the blend factor can pass ``[0.0, 0.5]``.
     """
+    specs = [
+        (float(spec), 0.7, 0.3) if isinstance(spec, (int, float)) else tuple(spec)
+        for spec in tversky_specs
+    ]
     seen = set()
     out: List[Dict[str, Any]] = []
     for T, a, reg, ce, (tw, ta, tb) in itertools.product(
-            temperatures, alphas, regimes, ce_options, tversky_specs):
+            temperatures, alphas, regimes, ce_options, specs):
         cfg = make_config_overrides(T, a, reg, ce, tversky_weight=tw,
                                     tversky_alpha=ta, tversky_beta=tb)
         key = (cfg["temperature"], cfg["alpha"], cfg["augment_regime"],

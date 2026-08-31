@@ -49,11 +49,17 @@ def _select_best_epoch_metrics(raw: Dict[str, Any]) -> Dict[str, Any]:
 def export_int8(
     keras_path: Union[str, Path],
     models_dir: Union[str, Path] = "models/",
+    config_path: str = "config/config.yaml",
 ) -> Dict[str, Any]:
     """Convert a Keras model to a calibrated INT8 TFLite file.
 
     Also produces a companion _quant_params.json consumed by firmware/build.rs
     at compile time to embed correct scale/zero-point values in the binary.
+
+    config_path must be the SAME config the model was trained with: it supplies
+    the calibration image directory, the input shape and the normalization
+    mean/std. Pointing it at a different config silently calibrates on the wrong
+    (or missing) data, which quietly wrecks the INT8 scales.
     """
     from src.quantize_model import quantize_model
 
@@ -71,7 +77,7 @@ def export_int8(
         print(f"Copied {keras_path.name} → {model_dest}")
 
     print(f"Quantizing {model_name} → INT8 TFLite...")
-    quant_ok = quantize_model(str(model_dest), str(tflite_path))
+    quant_ok = quantize_model(str(model_dest), str(tflite_path), config_path=config_path)
     quant_result = {
         "status": "success" if quant_ok else "failed",
         "tflite_path": str(tflite_path) if quant_ok else None,

@@ -117,7 +117,8 @@ def train_step(student: keras.Model, teacher: Optional[keras.Model], x: tf.Tenso
         x: Input batch
         y: Ground truth masks
         optimizer: Optimizer
-        alpha: Weight for student loss (1-alpha for distillation)
+        alpha: Weight for the distillation term (1-alpha weights the
+            supervised student loss): total = (1-alpha)*student + alpha*distill
         temperature: Distillation temperature
         bce_loss_fn: BinaryCrossentropy loss object
         mse_loss_fn: MeanSquaredError loss object
@@ -921,7 +922,9 @@ def train_model(config_path: str = "config/config.yaml", experiment_name: str = 
                 
             student = create_model_from_config(config)
 
-            # Apply QAT (Quantization-Aware Training) to the student model
+            # Apply QAT (Quantization-Aware Training) to the student model.
+            # apply_qat_to_model raises on failure: QAD requires fake-quant nodes
+            # from epoch 1, so a silent float fallback must not be possible.
             qat_enabled = config.get("qat_enabled", True)
             if qat_enabled:
                 print("Applying Quantization-Aware Training (QAT) to student model...")
@@ -989,6 +992,10 @@ def train_model(config_path: str = "config/config.yaml", experiment_name: str = 
             "model_path": str(model_path),
             "model_name": config.get("model_name", "model"),
             "experiment_dir": str(experiment_dir),
+            # Recorded so results.json states whether the saved .h5 actually
+            # carries fake-quantization wrappers, rather than leaving it to be
+            # inferred from the config.
+            "qat_applied": bool(is_qat_model),
         }
     except Exception as e:
         return {

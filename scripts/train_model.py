@@ -66,7 +66,8 @@ def main():
 
         # Phase 2: Quantize to INT8 TFLite
         print("\nPhase 2: Quantize to INT8 TFLite")
-        quant_res = export_int8(str(src_model), models_dir=models_dir_path)
+        quant_res = export_int8(str(src_model), models_dir=models_dir_path,
+                                config_path=config_path)
 
         if quant_res.get("quant_params_path"):
             print(f"\n  ⚠  Firmware dependency: {quant_res['quant_params_path']}")

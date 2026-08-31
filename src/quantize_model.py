@@ -111,15 +111,39 @@ def quantize_model(model_path: str, output_path: str, input_shape: Optional[Tupl
     
     data_paths = config.get("data", {}).get("paths", {})
     data_cfg = data_paths.get("processed", {})
-    val_img_dir = data_cfg.get("val", {}).get("img", "")
+
+    # Which split calibrates the INT8 scales/zero-points. Defaults to "val" —
+    # the split used for the published results — but note that val also drives
+    # checkpoint selection, so the calibration set is not independent of model
+    # selection. Set quantization.calibration_split: train for a strictly
+    # independent calibration (the test split is deliberately not accepted).
+    calib_split = str(config.get("quantization", {}).get("calibration_split", "val")).lower()
+    if calib_split not in ("val", "train"):
+        raise ValueError(
+            f"quantization.calibration_split must be 'val' or 'train', got {calib_split!r}"
+        )
+    calib_img_dir = data_cfg.get(calib_split, {}).get("img", "")
         
     mean = np.array(config.get("data", {}).get("normalization", {}).get("mean", [0.5, 0.5, 0.5]), dtype=np.float32)
     std = np.array(config.get("data", {}).get("normalization", {}).get("std", [0.5, 0.5, 0.5]), dtype=np.float32)
 
     img_files = []
-    if val_img_dir and os.path.isdir(val_img_dir):
-        img_files = [os.path.join(val_img_dir, f) for f in os.listdir(val_img_dir) if f.endswith('.png')]
-        img_files = sorted(img_files)  # Use entire validation set for calibration
+    if calib_img_dir and os.path.isdir(calib_img_dir):
+        img_files = [os.path.join(calib_img_dir, f) for f in os.listdir(calib_img_dir) if f.endswith('.png')]
+        img_files = sorted(img_files)  # Use the entire split for calibration
+
+    # A noise-calibrated INT8 model loads, runs, and is quietly worthless: the
+    # activation ranges bear no relation to real images. Fail loudly instead,
+    # unless a noise run is explicitly requested.
+    allow_noise = bool(config.get("quantization", {}).get("allow_noise_calibration", False))
+    if not img_files and not allow_noise:
+        raise FileNotFoundError(
+            f"No calibration images found for the '{calib_split}' split "
+            f"(looked in {calib_img_dir!r}). Check that config_path points at the "
+            "config the model was trained with. Set "
+            "quantization.allow_noise_calibration: true to calibrate on random "
+            "noise anyway (debug only — the resulting INT8 model is not usable)."
+        )
 
     def representative_data_gen():
         shape_to_gen = list(input_shape)
@@ -127,7 +151,8 @@ def quantize_model(model_path: str, output_path: str, input_shape: Optional[Tupl
             shape_to_gen = [1] + shape_to_gen
             
         if img_files:
-            print(f"Calibration using {len(img_files)} images from {val_img_dir}")
+            print(f"Calibration using {len(img_files)} images from {calib_img_dir} "
+                  f"({calib_split} split)")
             for img_path in img_files:
                 img = cv2.imread(img_path)
                 if img is not None:
@@ -139,8 +164,9 @@ def quantize_model(model_path: str, output_path: str, input_shape: Optional[Tupl
                     img = np.expand_dims(img, axis=0)
                     yield [img]
         else:
-            # Fallback to random data if no training data is found
-            print("Warning: No training data found. Using random noise for quantization.")
+            # Only reachable with quantization.allow_noise_calibration: true.
+            print("Warning: No calibration data found. Using random noise — "
+                  "the resulting INT8 model is for debugging only.")
             for _ in range(100):
                 data = np.random.rand(*shape_to_gen).astype(np.float32)
                 data = (data - mean) / std

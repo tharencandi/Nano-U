@@ -5,53 +5,7 @@ import tf_keras as keras
 import tensorflow_model_optimization as tfmot
 
 
-# Layers that TFMOT cannot quantize: they pass data through without learnable
-# weights and therefore need no fake-quantization nodes.
-# Using string names for more robust matching across Keras namespace variants.
-_QAT_PASSTHROUGH_NAMES = {
-    "UpSampling2D",
-    "MaxPooling2D",
-    "AveragePooling2D",
-    "GlobalAveragePooling2D",
-    "Flatten",
-    "Reshape",
-    "Concatenate",
-    "Add",
-    "Dropout",
-    "ZeroPadding2D",
-    "Cropping2D",
-    "InputLayer",
-    "PadToMatch",  # Custom layer in builders.py
-}
-
-
-class NoOpQuantizeConfig(tfmot.quantization.keras.QuantizeConfig):
-    """Tells TFMOT to leave a layer completely unchanged during QAT.
-
-    Used for layers that have no learnable weights (pooling, upsampling,
-    concatenate, etc.) and therefore need no fake-quantization nodes.
-    """
-
-    def get_weights_and_quantizers(self, layer):
-        return []
-
-    def get_activations_and_quantizers(self, layer):
-        return []
-
-    def set_quantize_weights(self, layer, quantize_weights):
-        pass
-
-    def set_quantize_activations(self, layer, quantize_activations):
-        pass
-
-    def get_output_quantizers(self, layer):
-        return []
-
-    def get_config(self):
-        return {}
-
-
-def apply_qat_to_model(model: keras.Model) -> keras.Model:
+def apply_qat_to_model(model: keras.Model, strict: bool = True) -> keras.Model:
     """Apply Quantization-Aware Training to a Keras Functional model.
 
     Uses `tfmot.quantization.keras.quantize_model` directly to ensure that
@@ -61,10 +15,17 @@ def apply_qat_to_model(model: keras.Model) -> keras.Model:
 
     Args:
         model: A compiled or uncompiled Keras Functional model.
+        strict: When True (the default) a wrapping failure raises. QAD depends
+            on fake-quantization being present from epoch 1, so a silent
+            fallback would produce a run that *looks* like QAD, trains in pure
+            float, and only reveals the damage after INT8 export. Pass
+            strict=False to opt into the legacy fail-soft behavior.
 
     Returns:
-        A QAT-annotated model ready for training, or the original model if
-        quantization fails for any reason (with a printed warning).
+        A QAT-annotated model ready for training.
+
+    Raises:
+        RuntimeError: if quantization fails and ``strict`` is True.
     """
     try:
         qat_model = tfmot.quantization.keras.quantize_model(model)
@@ -73,5 +34,12 @@ def apply_qat_to_model(model: keras.Model) -> keras.Model:
         return qat_model
 
     except Exception as exc:
+        if strict:
+            raise RuntimeError(
+                f"QAT wrapping failed for model '{model.name}': {exc}. "
+                "Training would silently fall back to float and the INT8 export "
+                "would lose accuracy. Fix the model or set qat_enabled: false "
+                "explicitly if a float run is intended."
+            ) from exc
         print(f"  Warning: QAT failed ({exc}). Training without quantization.")
         return model
