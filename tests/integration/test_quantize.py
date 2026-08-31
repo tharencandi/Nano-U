@@ -48,3 +48,45 @@ def test_int8_export_roundtrip(tmp_path):
     # Normalization must be carried through for the firmware build script.
     assert len(params["normalization"]["mean"]) == 3
     assert len(params["normalization"]["std"]) == 3
+
+
+def test_missing_calibration_images_raise(tmp_path, monkeypatch):
+    """A missing calibration split must fail loudly, not fall back to noise.
+
+    Noise-calibrated INT8 models load and run while being numerically useless,
+    so the failure has to surface at export time.
+    """
+    from src import quantize_model as qm
+
+    cfg = {
+        "data": {
+            "input_shape": (H, W, 3),
+            "paths": {"processed": {"val": {"img": str(tmp_path / "does_not_exist")}}},
+        }
+    }
+    monkeypatch.setattr(qm, "load_config", lambda *_a, **_k: cfg)
+
+    model = create_nano_u(input_shape=(H, W, 3), filters=[4, 8, 16], bottleneck=16)
+    keras_path = str(tmp_path / "nano_u.h5")
+    model.save(keras_path)
+
+    with pytest.raises(FileNotFoundError, match="No calibration images"):
+        qm.quantize_model(keras_path, str(tmp_path / "nano_u.tflite"))
+
+
+def test_calibration_split_is_validated(tmp_path, monkeypatch):
+    """Only 'val' and 'train' are accepted — never the held-out test split."""
+    from src import quantize_model as qm
+
+    cfg = {
+        "data": {"input_shape": (H, W, 3), "paths": {"processed": {}}},
+        "quantization": {"calibration_split": "test"},
+    }
+    monkeypatch.setattr(qm, "load_config", lambda *_a, **_k: cfg)
+
+    model = create_nano_u(input_shape=(H, W, 3), filters=[4, 8, 16], bottleneck=16)
+    keras_path = str(tmp_path / "nano_u.h5")
+    model.save(keras_path)
+
+    with pytest.raises(ValueError, match="calibration_split"):
+        qm.quantize_model(keras_path, str(tmp_path / "nano_u.tflite"))

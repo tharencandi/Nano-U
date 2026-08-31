@@ -92,7 +92,7 @@ training:
     distillation:
       enabled: true
       teacher_weights: "models/<your_dataset>/bu_net.h5"
-      alpha: 0.5       # Weight for student loss (1-alpha for teacher loss)
+      alpha: 0.5       # Weight for the distillation (teacher) term; (1-alpha) is the CE weight
       temperature: 4.0 # Higher temperature softens teacher distribution
 
 
@@ -100,6 +100,13 @@ training:
 quantization:
   method: "dynamic_range"  # or "full_integer"
   representative_dataset_size: 100
+  # Split used to calibrate INT8 scales/zero-points. "val" reproduces the
+  # published results, but val also selects the checkpoint, so calibration is
+  # not independent of model selection; "train" is the conservative choice.
+  calibration_split: "val"   # "val" | "train"
+  # Debug escape hatch: calibrate on random noise when the split has no images.
+  # Leave false — a noise-calibrated INT8 model runs but is meaningless.
+  allow_noise_calibration: false
   input_type: "int8"
   output_type: "int8"
   supported_ops:

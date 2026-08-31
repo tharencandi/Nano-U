@@ -42,7 +42,7 @@ The near-zero Float32→INT8 gap (≈0 pp mIoU on both domains) shows QAD carrie
 
 Raw input, ground-truth mask, and Nano-U INT8 prediction across both domains:
 
-<img src="tools/predictions_comparison.png" alt="Input, ground truth, and Nano-U INT8 prediction on Botanic Garden and TinyAgri" width="800"/>
+<img src="tools/poster/out/predictions_comparison.png" alt="Input, ground truth, and Nano-U INT8 prediction on Botanic Garden and TinyAgri" width="800"/>
 
 ### Training Pipeline
 
@@ -90,6 +90,29 @@ $$\mathcal{L} = \alpha \cdot T^2 \cdot \mathcal{L}_\text{KD} + (1 - \alpha) \cdo
 
 where $\mathcal{L}_\text{KD}$ is MSE between temperature-scaled sigmoid outputs of teacher and student, $\mathcal{L}_\text{CE}$ is binary cross-entropy against hard labels, and $T^2$ compensates for the gradient magnitude reduction from temperature scaling.
 
+$\alpha$ weights the **distillation** term; $(1-\alpha)$ weights the supervised term. Fake-quantization nodes are inserted before epoch 1 and gradients pass through them via the straight-through estimator, so the student learns the teacher's decision surface and a quantization-robust weight configuration in one pass. The INT8 scales and zero-points are then calibrated on real images (`quantization.calibration_split`, default `val`) and written to `<model>_quant_params.json` for `firmware/build.rs`.
+
+### Relation to the published paper
+
+The numbers above are **not** the ones in the [TAROS 2026 paper](#citation); the paper reports the state of the system at submission, and the repo has moved since. Both are reproducible — the difference is which config you run:
+
+| | Paper (arXiv:2605.10210) | This repo (current) |
+|:---|:---|:---|
+| Config | `config/BotanicGarden_config.yaml`, `config/TinyAgri_config.yaml` | `config/*_tuned_config.yaml` |
+| Distillation ($T$, $\alpha$) | BG 8.0 / 0.3 · TinyAgri 4.0 / 0.5 | BG 4.0 / 0.3 · TinyAgri 0.7 / 0.3 |
+| Supervised loss | BCE only | BG: BCE · TinyAgri: 0.3·BCE + 0.7·Tversky (0.8/0.2) |
+| Botanic Garden mIoU (FP32 / INT8) | 0.870 / 0.870 | 0.876 / 0.876 |
+| TinyAgri mIoU (FP32 / INT8) | 0.883 / **0.700** | 0.884 / 0.884 |
+| Inference latency | 845 ms (1.2 FPS) | 581 ms (~1.7 FPS), 426 ms on `multicore` |
+| Peak Data RAM | 257 KB | 281 KB |
+| Power | 470 mW board (137 mW idle, 333 mW active) | unchanged |
+
+Three changes account for the gaps:
+
+- **The TinyAgri INT8 collapse (0.883 → 0.700) is attributable to a calibration plumbing bug rather than to QAD itself.** `export_int8` did not forward `--config` to the quantizer, so INT8 calibration always read whatever `config/config.yaml` happened to contain, regardless of which config trained the model — calibrating on another domain's images, or on random noise when the paths were placeholders. Botanic Garden was unaffected because it was the domain `config/config.yaml` was filled in for. The config is now threaded through, and missing calibration images raise instead of silently degrading to noise.
+- **The tuned configs** come from the leakage-safe grouped CV sweep (`scripts/cv_search.py`) run after submission; TinyAgri in particular moved to a precision-favoring Tversky blend and a sharpening $T<1$.
+- **Latency and RAM** reflect the buffer-reuse work in the inference engine: faster (845 → 581 ms) at the cost of a slightly larger static arena (257 → 281 KB).
+
 ---
 
 ## Branches
@@ -119,7 +142,7 @@ An outdoor robot navigation benchmark collected in a 48,000 m² unstructured env
 ### TinyAgri
 A custom terrain segmentation dataset captured with the onboard OV2640 camera of an ESP32-CAM mounted on a SunFounder Galaxy RVR rover. 2,659 images across two agricultural environments (tomato and corn fields), annotated with SAM 2. Released alongside this project to support future edge-robotics research.
 
-<img src="tools/tinyagri_grid.png" alt="Sample images from the TinyAgri dataset — tomato and corn field terrain" width="800"/>
+<img src="tools/poster/out/tinyagri_grid.png" alt="Sample images from the TinyAgri dataset — tomato and corn field terrain" width="800"/>
 
 ---
 
