@@ -82,6 +82,8 @@ def _metrics_from_counts(tp, fp, fn, tn, eps=EPS):
     iou_bg = tn / (tn + fp + fn + eps)
     miou = 0.5 * (iou_fg + iou_bg)  # same formula as utils.metrics.BinaryIoU
     return {
+        "iou_foreground": float(iou_fg),
+        "iou_background": float(iou_bg),
         "precision": float(precision),
         "recall": float(recall),
         "dice": float(dice),
