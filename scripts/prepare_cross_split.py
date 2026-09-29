@@ -113,6 +113,16 @@ def create_fold_yaml(fold_idx: int, test_scene: str):
     cfg["training"]["nano_u"]["models_dir"] = f"models/TinyAgri_fold{fold_idx}"
     cfg["training"]["nano_u"]["distillation"]["teacher_weights"] = f"models/TinyAgri_fold{fold_idx}/bu_net.h5"
 
+    # Cross-scene CV adaptation: the paper's patience=10 was tuned for
+    # single-scene temporal splits where val_loss drops immediately. In
+    # leave-one-scene-out CV, BU-Net needs ~15 epochs for BatchNorm stats
+    # and deep representations to align across 3 heterogeneous scenes
+    # before cross-scene val_loss starts improving. patience=30 and an
+    # earlier LR decay (plateau_patience=5) let the optimizer reach the
+    # breakout point that Fold 3 demonstrated at epoch 12-15.
+    cfg["training"]["bu_net"]["patience"] = 30
+    cfg["training"]["bu_net"]["lr_plateau_patience"] = 5
+
     out_yaml_path = CONFIG_ROOT / f"TinyAgri_fold{fold_idx}.yaml"
     with open(out_yaml_path, "w") as f:
         yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)

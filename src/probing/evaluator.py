@@ -136,6 +136,8 @@ def run_probing_suite(
             "label": stage_title,
             "shape": list(input_shape),
             "final_train_loss": float(final_loss),
+            "iou_foreground": float(metrics.get("iou_foreground", metrics.get("dice", 0.0))),
+            "iou_background": float(metrics.get("iou_background", 0.0)),
             "miou": float(metrics["miou"]),
             "dice": float(metrics["dice"]),
             "precision": float(metrics["precision"]),
@@ -144,7 +146,7 @@ def run_probing_suite(
         }
         test_predictions[stage] = probs
         trained_probes[stage] = probe
-        print(f"  Test Score: mIoU={metrics['miou']:.4f} | Dice={metrics['dice']:.4f} | Prec={metrics['precision']:.4f} | Rec={metrics['recall']:.4f}")
+        print(f"  Test Score: IoU_fg={probe_metrics[stage]['iou_foreground']:.4f} | mIoU={metrics['miou']:.4f} | Dice={metrics['dice']:.4f} | Prec={metrics['precision']:.4f} | Rec={metrics['recall']:.4f}")
 
     # Baseline Full Model Score
     print("\n--- Baseline Full Model Inference on Test Set ---")
@@ -152,13 +154,15 @@ def run_probing_suite(
     base_metrics = compute_segmentation_metrics(base_probs, base_masks, operating_threshold=0.5)
     probe_metrics["full_model"] = {
         "label": "Full Deployed Nano-U",
+        "iou_foreground": float(base_metrics.get("iou_foreground", base_metrics.get("dice", 0.0))),
+        "iou_background": float(base_metrics.get("iou_background", 0.0)),
         "miou": float(base_metrics["miou"]),
         "dice": float(base_metrics["dice"]),
         "precision": float(base_metrics["precision"]),
         "recall": float(base_metrics["recall"]),
         "f1": float(base_metrics["f1"]),
     }
-    print(f"  Full Model: mIoU={base_metrics['miou']:.4f} | Dice={base_metrics['dice']:.4f}")
+    print(f"  Full Model: IoU_fg={probe_metrics['full_model']['iou_foreground']:.4f} | mIoU={base_metrics['miou']:.4f} | Dice={base_metrics['dice']:.4f}")
 
     # 4. Compute Centered Kernel Alignment (CKA) across layers
     print("\n[Step 3/4] Computing Centered Kernel Alignment (CKA) matrix...")

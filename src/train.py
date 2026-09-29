@@ -941,7 +941,7 @@ def train_model(config_path: str = "config/config.yaml", experiment_name: str = 
             # TFMOT requires a Sequential or Functional model; bu_net and other
             # custom subclasses are not compatible and must skip QAT.
             model_name = config.get("model_name", "nano_u")
-            qat_enabled = config.get("qat_enabled", True) and model_name == "nano_u"
+            qat_enabled = config.get("qat_enabled", True) and ("nano_u" in model_name)
             if qat_enabled:
                 print("Applying Quantization-Aware Training (QAT) to model...")
                 model = apply_qat_to_model(model)
