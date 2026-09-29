@@ -33,6 +33,7 @@ results/
 config/*.yaml
 config/*.yml
 !config/config.yaml
+!config/TinyAgri_config.yaml
 
 # ── Media & data blobs (tracked exceptions whitelisted further down) ─────────
 *.png

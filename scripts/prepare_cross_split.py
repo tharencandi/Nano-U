@@ -93,6 +93,8 @@ def make_symlink_dir(pairs: List[Dict[str, str]], img_target_dir: Path, mask_tar
 
 def create_fold_yaml(fold_idx: int, test_scene: str):
     base_yaml_path = CONFIG_ROOT / "TinyAgri_config.yaml"
+    if not base_yaml_path.exists():
+        base_yaml_path = CONFIG_ROOT / "config.yaml"
     with open(base_yaml_path, "r") as f:
         cfg = yaml.safe_load(f)
 
