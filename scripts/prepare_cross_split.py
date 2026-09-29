@@ -26,7 +26,7 @@ import yaml
 from pathlib import Path
 from typing import List, Dict
 
-REPO_ROOT = Path("/home/tharen/MASTERS/thesis/Nano-U")
+REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_ROOT = REPO_ROOT / "data" / "TinyAgri_full"
 MANIFEST_ROOT = REPO_ROOT / "data" / "manifests"
 SPLITS_ROOT = REPO_ROOT / "data" / "cv_splits"
